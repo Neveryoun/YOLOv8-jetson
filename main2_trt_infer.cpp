@@ -5,6 +5,9 @@
 #include <opencv2/opencv.hpp>
 #include "utils.h"
 #include <string>
+
+#include "test.h"  //cuda
+
 using namespace nvinfer1;
 using namespace cv;
 
@@ -20,7 +23,6 @@ static const float NMS_THRESHOLD = 0.5;
 static const float MASK_THRESHOLD = 0.5;
 const char* INPUT_BLOB_NAME = "images";       //这里对应模型的输入和输出名称，通过onnx文件在netron中可查看
 const char* OUTPUT_BLOB_NAME = "output0";
-
 
 
 struct OutputSeg {
@@ -100,7 +102,7 @@ int main(int argc, char** argv)
 		argv[1] = "/home/zeh/Desktop/cpp_tensorrt/models/yolo/yolov8n1_fp16.engine";
 	}
 	// create a model using the API directly and serialize it to a stream
-	char* trtModelStream{ nullptr }; //char* trtModelStream==nullptr;  开辟空指针后 要和new配合使用，比如89行 trtModelStream = new char[size]
+	char* trtModelStream{ nullptr }; //char* trtModelStream==nullptr;  开辟空指针后 要和new配合使用
 	size_t size{ 0 };//与int固定四个字节不同有所不同,size_t的取值range是目标平台下最大可能的数组尺寸,一些平台下size_t的范围小于int的正数范围,又或者大于unsigned int. 使用Int既有可能浪费，又有可能范围不够大。
 
 	std::ifstream file(argv[1], std::ios::binary);
@@ -131,7 +133,7 @@ int main(int argc, char** argv)
 	assert(context != nullptr);
 	delete[] trtModelStream;
 	
-	VideoCapture cap(1);
+	VideoCapture cap(3);
 	if(!cap.isOpened()){
 		std::cout<<"creamer error!"<<std::endl;
 		return -1;
@@ -148,36 +150,58 @@ int main(int argc, char** argv)
 	int img_height = src.rows;
 	//std::cout << "宽高：" << img_width << " " << img_height << std::endl;
 	// Subtract mean from image
-	static float data[3 * INPUT_H * INPUT_W];
+	//static float data[3 * INPUT_H * INPUT_W];
 	Mat pr_img0, pr_img;
 	std::vector<int> padsize;
+	
+	auto start_fps = std::chrono::system_clock::now();
+	auto start = std::chrono::system_clock::now();
 	pr_img = preprocess_img(src, INPUT_H, INPUT_W, padsize);       // Resize
 	int newh = padsize[0], neww = padsize[1], padh = padsize[2], padw = padsize[3];
 	float ratio_h = (float)src.rows / newh;
 	float ratio_w = (float)src.cols / neww;
 	int i = 0;// [1,3,INPUT_H,INPUT_W]
 	//std::cout << "pr_img.step" << pr_img.step << std::endl;
-	for (int row = 0; row < INPUT_H; ++row) {
-		uchar* uc_pixel = pr_img.data + row * pr_img.step;//pr_img.step=widthx3 就是每一行有width个3通道的值
-		for (int col = 0; col < INPUT_W; ++col)
-		{
 
-			data[i] = (float)uc_pixel[2] / 255.0;
-			data[i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
-			data[i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
-			uc_pixel += 3;
-			++i;
-		}
-	}
+	static float data[3 * INPUT_H * INPUT_W];
+	size_t dataBytes = INPUT_H*INPUT_W*3;
+
+	uchar* imageData;
+	cudaMalloc((void**)&imageData,sizeof(uchar)*dataBytes);
+	float* deviceData;
+	cudaMalloc((void**)&deviceData,dataBytes*sizeof(float));
+
+	cudaMemcpy(imageData, pr_img.data, dataBytes*sizeof(uchar), cudaMemcpyHostToDevice);
+	//cudaMemcpy(deviceData, data, dataBytes, cudaMemcpyHostToDevice);
+
+	mycuda(imageData, deviceData, INPUT_H, INPUT_W);
+    cudaMemcpy(data, deviceData, dataBytes*sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaFree(deviceData);
+
+	// for (int row = 0; row < INPUT_H; ++row) {
+	// 	uchar* uc_pixel = pr_img.data + row * pr_img.step;//pr_img.step=widthx3 就是每一行有width个3通道的值
+	// 	for (int col = 0; col < INPUT_W; ++col)
+	// 	{
+
+	// 		data[i] = (float)uc_pixel[2] / 255.0;
+	// 		data[i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
+	// 		data[i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
+	// 		uc_pixel += 3;
+	// 		++i;
+	// 	}
+	// }
+	auto end = std::chrono::system_clock::now();
+	std::cout << "预处理时间" << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()<< "ms" << std::endl;
 
 	
 	// Run inference
 	static float prob[OUTPUT_SIZE];
 	
-	auto start = std::chrono::system_clock::now();
-	auto start0 = std::chrono::system_clock::now();
+	start = std::chrono::system_clock::now();
+	//auto start_fps = std::chrono::system_clock::now();
 	doInference(*context, data, prob, 1);
-	auto end = std::chrono::system_clock::now();
+	end = std::chrono::system_clock::now();
 	std::cout << "推理时间：" << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
 
 	std::vector<int> classIds;//结果id数组
@@ -233,14 +257,13 @@ int main(int argc, char** argv)
 		//temp_mask_proposals.push_back(picked_proposals[idx]);
 	}
 
-	
 	end = std::chrono::system_clock::now();
 	std::cout << "后处理时间：" << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()<< "ms" << std::endl;
 
 	DrawPred(src, output);
 	cv::imshow("output1.jpg", src);
-	auto end0 = std::chrono::system_clock::now();
-    fps = std::chrono::duration_cast<std::chrono::milliseconds>(end0 - start0).count() ;
+	auto end_fps = std::chrono::system_clock::now();
+    fps = std::chrono::duration_cast<std::chrono::milliseconds>(end_fps - start_fps).count() ;
 	fps=1000/fps;
 	std::cout<<fps<<std::endl;
 	//start0=end0;

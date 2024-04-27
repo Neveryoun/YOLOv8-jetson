@@ -31,7 +31,6 @@ message(STATUS " include path: ${CUDA_INCLUDE_DIRS}")
 include_directories(${CUDA_INCLUDE_DIRS})
 enable_language(CUDA) 
 
-
 # add_executable(onnx2trt ${PROJECT_SOURCE_DIR}/main1_onnx2trt.cpp)
 # target_link_libraries(onnx2trt nvinfer)
 # target_link_libraries(onnx2trt nvonnxparser)
@@ -39,6 +38,8 @@ enable_language(CUDA)
 # target_link_libraries(onnx2trt ${OpenCV_LIBS})
 
 add_executable(trt_infer ${PROJECT_SOURCE_DIR}/main2_trt_infer.cpp)
+#link_directories(/home/zeh/Desktop/cuda_yolo/build)
+target_link_libraries(trt_infer ${PROJECT_SOURCE_DIR}/libcuda_test.a)
 target_link_libraries(trt_infer nvinfer)
 target_link_libraries(trt_infer nvonnxparser)
 target_link_libraries(trt_infer cudart)
@@ -46,5 +47,5 @@ target_link_libraries(trt_infer nvinfer_plugin)
 target_link_libraries(trt_infer ${OpenCV_LIBS})
 
 
-add_definitions(-O2 -pthread)
+add_definitions(-O1 -pthread)
 
