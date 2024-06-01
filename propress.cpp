@@ -35,8 +35,8 @@ const char *cocolabels[] = {"person",        "bicycle",      "car",
 int main(int argc, char** argv){
 
     argv[1] = "/home/zeh/Desktop/cpp_tensorrt/models/yolo/yolov8ntr.engine";
-    VideoCapture cap("/home/zeh/Desktop/cpp_tensorrt/output15.mp4");
-    //VideoCapture cap(0);
+    //VideoCapture cap("/home/zeh/Desktop/cpp_tensorrt/output15.mp4");
+    VideoCapture cap(0);
 
     const char* INPUT_BLOB_NAME = "images";       //这里对应模型的输入和输出名称，通过onnx文件在netron中可查看
     const char* OUTPUT_BLOB_NAME = "output0";
@@ -154,7 +154,7 @@ int main(int argc, char** argv){
     arrout.clear();
     }
 
-    cv::imwrite("Result1.jpg", src);
+    cv::imshow("Result1.jpg", src);
     auto end = std::chrono::system_clock::now();
     double fps = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     fps=1000/fps;
