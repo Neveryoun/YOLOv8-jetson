@@ -6,7 +6,7 @@ import os
 def main():
 
     if len(sys.argv) < 2:
-        print("Usage:\n python v8trans.py yolov8n.onnx")
+        print("Usage:\n python onnx_trans.py yolov8n.onnx")
         return 1
 
     file = sys.argv[1]
